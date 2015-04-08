@@ -1,4 +1,4 @@
-## SIGHASH Proposal
+## Build your own nHashType 
 
 This document is the result of an IRC discussion from 4/7/15 with gmaxwell, tdryja, and StephenM347, on how to enable the bitcoin lightning network with a more fully featured set of SIGHASH flags.
 
