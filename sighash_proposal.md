@@ -222,7 +222,7 @@ public:
 
 To be soft-fork compatible, obviously these changes need to be done through an alternate method to using the single byte nHashType with OP_CHECKSIG. Two such alternatives are:
 
- - P3SH - Use a `scriptPubKey` similar to P2SH, but ending with OP_EQUALVERIFY instead of OP_EQUAL. All instances of OP_CHECKSIG within the `redeemScript` can then use the featureful set of SIGHASH flags.
+ - P3SH - Use a `scriptPubKey` similar to P2SH, but with an extra OP_NOP at the beginning. All instances of OP_CHECKSIG within the `redeemScript` can then use the featureful set of SIGHASH flags. There are a few variations on this.
  - OP_NEWCHECKSIG - Make another checksig opcode, possibly even using Schnorr signatures instead of standard secp256k1.
 
 Finally, while it may seem unnecessary to use an extra 4 bytes per signature, it should be noted that since this is in the `scriptSig`, it is entirely prunable. 
