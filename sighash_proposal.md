@@ -105,9 +105,9 @@ public:
         assert(nHashType >= 0);
     }
     
-    int CurrHashType(unsigned int nInput) {
+    int CurrHashType(unsigned int nIndex) {
         // Assume SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE true for other inputs
-        return (nInput == nIn) ? (nHashType >> 8) : (nHashType | SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | SIGHASH_WITHOUT_PREV_VALUE);
+        return (nIndex == nIn) ? (nHashType >> 8) : (nHashType | SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | SIGHASH_WITHOUT_PREV_VALUE);
     }
 
     /** Serialize the passed scriptCode, skipping OP_CODESEPARATORs */
@@ -161,7 +161,7 @@ public:
     /** Serialize an output of txTo */
     template<typename S>
     void SerializeOutput(S &s, unsigned int nOutput, int nType, int nVersion) const {
-        int currHashType = CurrHashType(nInput);
+        int currHashType = CurrHashType(nOutput);
         
         if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_VALUE))
             ::Serialize(s, txTo.vout[nOutput].nValue, nType, nVersion);
