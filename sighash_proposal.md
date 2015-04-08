@@ -30,26 +30,25 @@ enum
     SIGHASH_WITHOUT_PREV_VALUE            = 0x02,
     SIGHASH_WITHOUT_INPUT_TXID            = 0x04,
     SIGHASH_WITHOUT_INPUT_INDEX           = 0x08,
-    SIGHASH_WITHOUT_INPUT_SCRIPTCODE      = 0x10, /* scriptSig, minus signature itself, and taking into account OP_CODESEPARATOR */
-    SIGHASH_WITHOUT_INPUT_SEQUENCE        = 0x20,
-    
+    SIGHASH_WITHOUT_INPUT_SEQUENCE        = 0x10,
+
     // Output Specific
-    SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x40,
-    SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x80,
-    
-    // Wheter to serialize the other (other than self) inputs/outputs at all
+    SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x20,
+    SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x40,
+
+    // Whether to serialize the other (other than self) inputs/outputs at all
     SIGHASH_WITHOUT_INPUTS                = 0x010000,
     SIGHASH_WITHOUT_OUTPUTS               = 0x020000,
-    
+
     // Whether to serialize this input/output at all (these take priority over SIGHASH_WITHOUT_INPUTS and SIGHASH_WITHOUT_OUTPUTS)
     SIGHASH_WITHOUT_INPUT_SELF            = 0x040000,
     SIGHASH_WITHOUT_OUTPUT_SELF           = 0x080000,
-    
+
     // Transaction specific fields
     SIGHASH_WITHOUT_TX_VERSION            = 0x100000,
     SIGHASH_WITHOUT_TX_LOCKTIME           = 0x200000,
 
-    
+
     // Sign value not derived from transaction
     // (Whenever nHashType is negative, the script signature is for the value on the stack, e.g. stacktop(-3))
     SIGHASH_SIGN_STACK_ELEMENT            = 0x10000000,
@@ -63,12 +62,10 @@ Note, to limit the data required to calculate a signature Hash, SIGHASH_WITHOUT_
 For example, with this method, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE are currently defined by:
 
 ```
-int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
-int nAtOther = SIGHASH_WITHOUT_INPUT_SCRIPTCODE;
-int SIGHASH_ALL = (nAtIndex << 8) | nAtOther;
+int SIGHASH_ALL = SIGHASH_WITHOUT_PREV_VALUE;
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
-int nAtOther = SIGHASH_WITHOUT_INPUT_SCRIPTCODE | SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_OUTPUT_SELF;
+int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_OUTPUT_SELF;
 int SIGHASH_NONE = (nAtIndex << 8) | nAtOther;
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
@@ -128,11 +125,9 @@ public:
     /** Serialize an input of txTo */
     template<typename S>
     void SerializeInput(S &s, unsigned int nInput, int nType, int nVersion) const {
-        // In case of SIGHASH_ANYONECANPAY, only the input being signed is serialized
-        if (fAnyoneCanPay)
-            nInput = nIn;
         // Serialize the prevout
-        ::Serialize(s, txTo.vin[nInput].prevout, nType, nVersion);
+        if (!())
+            ::Serialize(s, txTo.vin[nInput].prevout, nType, nVersion);
         // Serialize the script
         if (nInput != nIn)
             // Blank out other inputs' signatures
