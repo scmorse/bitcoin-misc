@@ -181,9 +181,9 @@ public:
             ::Serialize(s, txTo.nVersion, nType, nVersion);
         
         // Serialize vin
-        unsigned int nInputs = (nHashType & SIGHASH_WITHOUT_INPUTS) ? 1 : txTo.vin.size();
-        if (nHashType & SIGHASH_WITHOUT_INPUT_SELF)
-            nInputs -= 1;
+        unsigned int nInputs = (nHashType & SIGHASH_WITHOUT_INPUTS) ? 0 : txTo.vin.size()-1;
+        if (!(nHashType & SIGHASH_WITHOUT_INPUT_SELF) && nIn < txTo.vin.size())
+            nInputs += 1;
         ::WriteCompactSize(s, nInputs);
         
         for (unsigned int nInput = 0; nInput < txTo.vin.size(); nInput++) {
@@ -197,9 +197,9 @@ public:
         }
         
         // Serialize vout
-        unsigned int nOutputs = (nHashType & SIGHASH_WITHOUT_OUTPUTS) ? 1 : txTo.vout.size();
-        if (nHashType & SIGHASH_WITHOUT_OUTPUT_SELF)
-            nOutputs -= 1;
+        unsigned int nOutputs = (nHashType & SIGHASH_WITHOUT_OUTPUTS) ? 0 : txTo.vout.size()-1;
+        if (!(nHashType & SIGHASH_WITHOUT_OUTPUT_SELF) && nIn < txTo.vout.size())
+            nOutputs += 1;
         ::WriteCompactSize(s, nOutputs);
         
         for (unsigned int nOutput = 0; nOutput < txTo.vout.size(); nOutput++) {
