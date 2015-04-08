@@ -37,11 +37,15 @@ enum
     SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x40,
     SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x80,
     
-    // Transaction Specific
-    SIGHASH_WITHOUT_INPUT                 = 0x010000,
-    SIGHASH_WITHOUT_OUTPUT                = 0x020000,
-    SIGHASH_WITHOUT_OTHER_INPUTS          = 0x040000,
-    SIGHASH_WITHOUT_OTHER_OUTPUTS         = 0x080000,
+    // Wheter to serialize the other (other than self) inputs/outputs at all
+    SIGHASH_WITHOUT_INPUTS                = 0x010000,
+    SIGHASH_WITHOUT_OUTPUTS               = 0x020000,
+    
+    // Whether to serialize this input/output at all (these take priority over SIGHASH_WITHOUT_INPUTS and SIGHASH_WITHOUT_OUTPUTS)
+    SIGHASH_WITHOUT_INPUT_SELF            = 0x040000,
+    SIGHASH_WITHOUT_OUTPUT_SELF           = 0x080000,
+    
+    // Transaction specific fields
     SIGHASH_WITHOUT_TX_VERSION            = 0x100000,
     SIGHASH_WITHOUT_TX_LOCKTIME           = 0x200000,
 
@@ -52,15 +56,41 @@ enum
 };
 ```
 
+Generally, more significant bits are given to flags with higher priority.
+
 Note, to limit the data required to calculate a signature Hash, SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE are assumed true on all other inputs (other than the currently executing).
 
-For example, with this method, SIGHASH_ALL is currently defined by:
+For example, with this method, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE are currently defined by:
 
 ```
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
 int nAtOther = SIGHASH_WITHOUT_INPUT_SCRIPTCODE;
-int SIGHASH_ALL = (nAtOther << 8) | nAtIndex;
+int SIGHASH_ALL = (nAtIndex << 8) | nAtOther;
+
+int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
+int nAtOther = SIGHASH_WITHOUT_INPUT_SCRIPTCODE | SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_OUTPUT_SELF;
+int SIGHASH_NONE = (nAtIndex << 8) | nAtOther;
+
+int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
+int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_INPUTS;
+int SIGHASH_SINGLE = (nAtIndex << 8) | nAtOther;
 ```
+
+To make a flag also use SIGHASH_ANYONECANPAY:
+
+```
+// nHashType already defined, want to make it SIGHASH_ANYONECANPAY
+nHashType = nHashType & (~SIGHASH_WITHOUT_INPUT_SELF) | (SIGHASH_WITHOUT_INPUTS);
+```
+-----
+
+Very rough draft implementation: 
+
+```
+
+```
+
+-----
 
 To be soft-fork compatible, obviously these changes need to be done through an alternate method to using the single byte nHashType with OP_CHECKSIG. Two such alternatives are:
 
