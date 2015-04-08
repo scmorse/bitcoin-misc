@@ -36,7 +36,7 @@ enum
     SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x20,
     SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x40,
 
-    // Whether to serialize the other (other than self) inputs/outputs at all
+    // Whether to serialize the other (other than self) inputs/outputs
     SIGHASH_WITHOUT_INPUTS                = 0x010000,
     SIGHASH_WITHOUT_OUTPUTS               = 0x020000,
 
@@ -164,41 +164,57 @@ public:
         int currHashType = CurrHashType(nInput);
         
         if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_VALUE))
-            ::Serialize(s, txTo.vout[nOutput].scriptPubKey, nType, nVersion);
+            ::Serialize(s, txTo.vout[nOutput].nValue, nType, nVersion);
         
         if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY))
             ::Serialize(s, txTo.vout[nOutput].scriptPubKey, nType, nVersion);
-        else 
+        else
             ::Serialize(s, CScript(), nType, nVersion);
     }
 
     /** Serialize txTo */
     template<typename S>
     void Serialize(S &s, int nType, int nVersion) const {
-        int currHashType = CurrHashType(nInput);
         
         // Serialize nVersion
-        if (!(currHashType & SIGHASH_WITHOUT_TX_VERSION))
+        if (!(nHashType & SIGHASH_WITHOUT_TX_VERSION))
             ::Serialize(s, txTo.nVersion, nType, nVersion);
         
         // Serialize vin
-        unsigned int nInputs = txTo.vin.size();
-        if (nHashType & SIGHASH_WITHOUT_INPUTS) {
-            nInputs = 0;
+        unsigned int nInputs = (nHashType & SIGHASH_WITHOUT_INPUTS) ? 1 : txTo.vin.size();
+        if (nHashType & SIGHASH_WITHOUT_INPUT_SELF)
+            nInputs -= 1;
+        ::WriteCompactSize(s, nInputs);
+        
+        for (unsigned int nInput = 0; nInput < txTo.vin.size(); nInput++) {
+            if (nInput == nIn) {
+                if (!(nHashType & SIGHASH_WITHOUT_INPUT_SELF))
+                    SerializeInput(s, nInput, nType, nVersion);
+            } else {
+                if (!(nHashType & SIGHASH_WITHOUT_INPUTS))
+                    SerializeInput(s, nInput, nType, nVersion);
+            }
         }
         
-            nInputs += 1;
-        ::WriteCompactSize(s, nInputs);
-        for (unsigned int nInput = 0; nInput < nInputs; nInput++)
-             SerializeInput(s, nInput, nType, nVersion);
-        
         // Serialize vout
-        unsigned int nOutputs = fHashNone ? 0 : (fHashSingle ? nIn+1 : txTo.vout.size());
+        unsigned int nOutputs = (nHashType & SIGHASH_WITHOUT_OUTPUTS) ? 1 : txTo.vout.size();
+        if (nHashType & SIGHASH_WITHOUT_OUTPUT_SELF)
+            nOutputs -= 1;
         ::WriteCompactSize(s, nOutputs);
-        for (unsigned int nOutput = 0; nOutput < nOutputs; nOutput++)
-             SerializeOutput(s, nOutput, nType, nVersion);
+        
+        for (unsigned int nOutput = 0; nOutput < txTo.vout.size(); nOutput++) {
+            if (nOutput == nIn) {
+                if (!(nHashType & SIGHASH_WITHOUT_OUTPUT_SELF))
+                    SerializeOutput(s, nOutput, nType, nVersion);
+            } else {
+                if (!(nHashType & SIGHASH_WITHOUT_OUTPUTS))
+                    SerializeOutput(s, nOutput, nType, nVersion);
+            }
+        }
+        
         // Serialize nLockTime
-        ::Serialize(s, txTo.nLockTime, nType, nVersion);
+        if (!(nHashType & SIGHASH_WITHOUT_TX_LOCKTIME))
+            ::Serialize(s, txTo.nLockTime, nType, nVersion);
     }
 };
 ```
