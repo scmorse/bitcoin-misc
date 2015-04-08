@@ -1,6 +1,6 @@
 ## Build your own nHashType 
 
-This document is the result of an IRC discussion from 4/7/15 with gmaxwell, tdryja, and StephenM347, on how to enable the bitcoin lightning network with a more fully featured set of SIGHASH flags.
+This document is the result of an IRC discussion from 4/7/15 with gmaxwell, tdryja, and myself (StephenM347), on how to enable the bitcoin lightning network with a more fully featured set of SIGHASH flags.
 
 The current set of SIGHASH parameters are defined by the [below code snippet](https://github.com/bitcoin/bitcoin/blob/v0.10.0/src/script/interpreter.h#L21-L28):
 
