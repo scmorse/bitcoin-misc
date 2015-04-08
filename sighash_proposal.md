@@ -48,7 +48,6 @@ enum
     SIGHASH_WITHOUT_TX_VERSION            = 0x100000,
     SIGHASH_WITHOUT_TX_LOCKTIME           = 0x200000,
 
-
     // Sign value not derived from transaction
     // (Whenever nHashType is negative, the script signature is for the value on the stack, e.g. stacktop(-3))
     SIGHASH_SIGN_STACK_ELEMENT            = 0x10000000,
