@@ -62,7 +62,9 @@ Note, to limit the data required to calculate a signature Hash, SIGHASH_WITHOUT_
 For example, with this method, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE are currently defined by:
 
 ```
-int SIGHASH_ALL = SIGHASH_WITHOUT_PREV_VALUE;
+int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
+int nAtOther = 0;
+int SIGHASH_NONE = (nAtIndex << 8) | nAtOther;
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
 int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_OUTPUT_SELF;
@@ -73,7 +75,7 @@ int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_INPUTS;
 int SIGHASH_SINGLE = (nAtIndex << 8) | nAtOther;
 ```
 
-To make a flag also use SIGHASH_ANYONECANPAY:
+It is necessary to have SIGHASH_WITHOUT_PREV_VALUE in each `nAtIndex` because currently the prevout's value is not serialized into the transaction. This would change, by default, so that [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
 
 ```
 // nHashType already defined, want to make it SIGHASH_ANYONECANPAY
@@ -92,12 +94,21 @@ class CTransactionSignatureSerializer {
 private:
     const CTransaction &txTo;  //! reference to the spending transaction (the one being serialized)
     const CScript &scriptCode; //! output script being consumed
+    const CAmount nValue;      //! nValue of ouptut being consumed
     const unsigned int nIn;    //! input index of txTo being signed
     const int nHashType;       //! nHashType determines logic of serialization
 
 public:
-    CTransactionSignatureSerializer(const CTransaction &txToIn, const CScript &scriptCodeIn, unsigned int nInIn, int nHashTypeIn) :
-        txTo(txToIn), scriptCode(scriptCodeIn), nIn(nInIn), nHashType(nHashTypeIn) {}
+    CTransactionSignatureSerializer(const CTransaction &txToIn, const CScript &scriptCodeIn, CAmount nValueIn, unsigned int nInIn, int nHashTypeIn) :
+        txTo(txToIn), scriptCode(scriptCodeIn), nValue(nValueIn), nIn(nInIn), nHashType(nHashTypeIn) {
+        // When nHashType < 0, signing a value on the stack
+        assert(nHashType >= 0);
+    }
+    
+    int CurrHashType(unsigned int nInput) {
+        // Assume SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE true for other inputs
+        return (nInput == nIn) ? (nHashType >> 8) : (nHashType | SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | SIGHASH_WITHOUT_PREV_VALUE);
+    }
 
     /** Serialize the passed scriptCode, skipping OP_CODESEPARATORs */
     template<typename S>
@@ -125,43 +136,62 @@ public:
     /** Serialize an input of txTo */
     template<typename S>
     void SerializeInput(S &s, unsigned int nInput, int nType, int nVersion) const {
+        int currHashType = CurrHashType(nInput);
+        
         // Serialize the prevout
-        if (!())
-            ::Serialize(s, txTo.vin[nInput].prevout, nType, nVersion);
-        // Serialize the script
-        if (nInput != nIn)
+        if (!(currHashType & SIGHASH_WITHOUT_INPUT_TXID))
+            ::Serialize(s, txTo.vin[nInput].prevout.hash, nType, nVersion);
+        
+        if (!(currHashType & SIGHASH_WITHOUT_INPUT_INDEX))
+            ::Serialize(s, txTo.vin[nInput].prevout.n, nType, nVersion);
+        
+        if (!(currHashType & SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY))
+            SerializeScriptCode(s, nType, nVersion);
+        else
             // Blank out other inputs' signatures
             ::Serialize(s, CScript(), nType, nVersion);
-        else
-            SerializeScriptCode(s, nType, nVersion);
-        // Serialize the nSequence
-        if (nInput != nIn && (fHashSingle || fHashNone))
-            // let the others update at will
-            ::Serialize(s, (int)0, nType, nVersion);
-        else
+            
+        if (!(currHashType & SIGHASH_WITHOUT_PREV_VALUE))
+            ::Serialize(s, nValue, nType, nVersion);
+            
+        if (!(currHashType & SIGHASH_WITHOUT_INPUT_SEQUENCE))
             ::Serialize(s, txTo.vin[nInput].nSequence, nType, nVersion);
     }
 
     /** Serialize an output of txTo */
     template<typename S>
     void SerializeOutput(S &s, unsigned int nOutput, int nType, int nVersion) const {
-        if (fHashSingle && nOutput != nIn)
-            // Do not lock-in the txout payee at other indices as txin
-            ::Serialize(s, CTxOut(), nType, nVersion);
-        else
-            ::Serialize(s, txTo.vout[nOutput], nType, nVersion);
+        int currHashType = CurrHashType(nInput);
+        
+        if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_VALUE))
+            ::Serialize(s, txTo.vout[nOutput].scriptPubKey, nType, nVersion);
+        
+        if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY))
+            ::Serialize(s, txTo.vout[nOutput].scriptPubKey, nType, nVersion);
+        else 
+            ::Serialize(s, CScript(), nType, nVersion);
     }
 
     /** Serialize txTo */
     template<typename S>
     void Serialize(S &s, int nType, int nVersion) const {
+        int currHashType = CurrHashType(nInput);
+        
         // Serialize nVersion
-        ::Serialize(s, txTo.nVersion, nType, nVersion);
+        if (!(currHashType & SIGHASH_WITHOUT_TX_VERSION))
+            ::Serialize(s, txTo.nVersion, nType, nVersion);
+        
         // Serialize vin
-        unsigned int nInputs = fAnyoneCanPay ? 1 : txTo.vin.size();
+        unsigned int nInputs = txTo.vin.size();
+        if (nHashType & SIGHASH_WITHOUT_INPUTS) {
+            nInputs = 0;
+        }
+        
+            nInputs += 1;
         ::WriteCompactSize(s, nInputs);
         for (unsigned int nInput = 0; nInput < nInputs; nInput++)
              SerializeInput(s, nInput, nType, nVersion);
+        
         // Serialize vout
         unsigned int nOutputs = fHashNone ? 0 : (fHashSingle ? nIn+1 : txTo.vout.size());
         ::WriteCompactSize(s, nOutputs);
