@@ -1,7 +1,5 @@
 ## Build your own nHashType 
 
-This document is the result of an IRC discussion from 4/7/15 with gmaxwell, tdryja, and myself (StephenM347), on how to enable the bitcoin lightning network with a more fully featured set of SIGHASH flags.
-
 The current set of SIGHASH parameters are defined by the [below code snippet](https://github.com/bitcoin/bitcoin/blob/v0.10.0/src/script/interpreter.h#L21-L28):
 
 ```
@@ -17,7 +15,7 @@ enum
 
 These cover the main uses cases. However, these could be extended to provide greater flexibility for future use cases. In particular, for the bitcoin lightning network, it would be useful to sign transactions without serializing in the TXID. In addition, it would be useful both for the lightning network and for hardware wallets (and, arguably, anyone) to include the value of the UTXO being spent in the serialized transaction that is hashed for signing, as was proposed in [this bitcointalk thread](https://bitcointalk.org/index.php?topic=181734.0). 
 
-Instead, we may use a 4-byte nHashType. One byte determines the inclusion/exclusion of data at the input for the currently executing `scriptSig` (and the output at the same index, if such an output exists). One more byte determines what data from other inputs/outputs should be serialized for the hash to sign. The remaining space determines what global transaction specific fields should be serialized for the hash to sign. In addition, there is a flag for signing a 32 byte value that hash been pushed on the stack. Using these fields, it is completely customizable which transaction data becomes hashed for the signature hash. These should fully enable any seen or unforseen use case of the CTransactionSignatureSerializer.
+Instead of the standard 1 byte sighash flag, we may use a 4-byte nHashType. One byte determines the inclusion/exclusion of data at the input for the currently executing `scriptSig` (and the output at the same index, if such an output exists). One more byte determines what data from other inputs/outputs should be serialized for the hash to sign. The remaining space determines what global transaction specific fields should be serialized for the hash to sign. In addition, there is a flag for signing a 32 byte value that hash been pushed on the stack. Using these fields, it is completely customizable which transaction data becomes hashed for the signature hash. These should fully enable any seen or unforseen use case of the CTransactionSignatureSerializer.
 
 The new SIGHASH flags are below.
 
@@ -26,31 +24,29 @@ The new SIGHASH flags are below.
 enum
 {
     // Input Specific
-    SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY     = 0x01,
-    SIGHASH_WITHOUT_PREV_VALUE            = 0x02,
-    SIGHASH_WITHOUT_INPUT_TXID            = 0x04,
-    SIGHASH_WITHOUT_INPUT_INDEX           = 0x08,
-    SIGHASH_WITHOUT_INPUT_SEQUENCE        = 0x10,
+    SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY     = 0x0001,
+    SIGHASH_WITHOUT_PREV_VALUE            = 0x0002,
+    SIGHASH_WITHOUT_INPUT_TXID            = 0x0004,
+    SIGHASH_WITHOUT_INPUT_INDEX           = 0x0008,
+    SIGHASH_WITHOUT_INPUT_SEQUENCE        = 0x0010,
 
     // Output Specific
-    SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x20,
-    SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x40,
+    SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x0020,
+    SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x0040,
+    
+    // Reserved for using the above flags at the other (other than self) indices
+    //                                      0x0080
+    //                                      0x0100
+    //                                      0x0200
+    //                                      0x0400
+    //                                      0x0800
 
-    // Whether to serialize the other (other than self) inputs/outputs
-    SIGHASH_WITHOUT_INPUTS                = 0x010000,
-    SIGHASH_WITHOUT_OUTPUTS               = 0x020000,
-
-    // Whether to serialize this input/output at all (these take priority over SIGHASH_WITHOUT_INPUTS and SIGHASH_WITHOUT_OUTPUTS)
-    SIGHASH_WITHOUT_INPUT_SELF            = 0x040000,
-    SIGHASH_WITHOUT_OUTPUT_SELF           = 0x080000,
+    // Whether to serialize the output at all (always takes priority over SIGHASH_WITHOUT_OUTPUTS)
+    SIGHASH_WITHOUT_OUTPUT_SELF           = 0x4000,
 
     // Transaction specific fields
-    SIGHASH_WITHOUT_TX_VERSION            = 0x100000,
-    SIGHASH_WITHOUT_TX_LOCKTIME           = 0x200000,
-
-    // Sign value not derived from transaction
-    // (Whenever nHashType is negative, the script signature is for the value on the stack, e.g. stacktop(-3))
-    SIGHASH_SIGN_STACK_ELEMENT            = 0x10000000,
+    SIGHASH_WITHOUT_TX_VERSION            = 0x0000,
+    SIGHASH_WITHOUT_TX_LOCKTIME           = 0x0000,
 };
 ```
 
@@ -228,3 +224,14 @@ To be soft-fork compatible, obviously these changes need to be done through an a
 Finally, while it may seem unnecessary to use an extra 4 bytes per signature, it should be noted that since this is in the `scriptSig`, it is entirely prunable. 
 
 This may be too complex since we know the use cases that are in mind for the sighash flags. However, there may be unforeseen use cases, and this soft-fork will enable all possible sighash flag configurations, rather than needing to soft fork every time an alternate sighash flag is needed.
+
+
+------
+
+Notes:
+
+I removed the sighash flag for signing a value on the stack because it seemed to be the wrong place for such an operation. Using an OP_NOP to create a modified OP_CHECKDATASIG seemed more appropriate. The current OP_CHECKSIG is really a OP_CHECKTXSIG and shouldn't be used to check sigs for data.
+
+I also removed the ability to not sign the input that the signature is being created for. If someone can think of a reason to add this back in then I'd be interested, but it seems to me that the whole point of creating an input is to sign that input as a valid spend of the prevout to fund the transaction.
+
+SIGHASH_WITHOUT_OUTPUT_SELF was removed because simply flagging both SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY and SIGHASH_WITHOUT_OUTPUT_VALUE can have the same effect, without needing to provide a check that the transaction was serialized with the output but without any of the outputs data. Similarly for SIGHASH_WITHOUT_INPUTS and SIGHASH_WITHOUT_OUTPUTS.
