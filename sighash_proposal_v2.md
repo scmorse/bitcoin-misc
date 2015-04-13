@@ -10,7 +10,7 @@ enum
     SIGHASH_NONE = 2,
     SIGHASH_SINGLE = 3,
     SIGHASH_ANYONECANPAY = 0x80,
-};s
+};
 ```
 
 These cover the main uses cases. However, these could be extended to provide greater flexibility for future use cases. In particular, for the bitcoin lightning network, it would be useful to sign transactions without serializing in the TXID. In addition, it would be useful both for the lightning network and for hardware wallets (and, arguably, anyone) to include the value of the UTXO being spent in the serialized transaction that is hashed for signing, as was proposed in [this bitcointalk thread](https://bitcointalk.org/index.php?topic=181734.0). 
@@ -249,7 +249,7 @@ To be soft-fork compatible, obviously these changes need to be done through an a
 OP_HASH160 0x14 {data} OP_EQUALVERIFY OP_3
 ```
 
- - OP_NEWCHECKSIG - Make another checksig opcode, possibly even using Schnorr signatures.
+ - OP_NEWCHECKSIG - Make another checksig opcode, possibly even using Schnorr signatures instead of standard secp256k1.
 
 This may be too complex since we know the use cases that are in mind for the sighash flags. However, there may be unforeseen use cases, and this soft-fork will enable all possible sighash flag configurations, rather than needing to soft fork every time an alternate sighash flag is needed. In addition, it permits the use of an optimized SignatureHash() function that can avoid re-hashing the same transaction data many many times to verify inputs.
 
