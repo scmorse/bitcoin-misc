@@ -15,12 +15,12 @@ enum
 
 These cover the main uses cases. However, these could be extended to provide greater flexibility for future use cases. In particular, for the bitcoin lightning network, it would be useful to sign transactions without serializing in the TXID. In addition, it would be useful both for the lightning network and for hardware wallets (and, arguably, anyone) to include the value of the UTXO being spent in the serialized transaction that is hashed for signing, as was proposed in [this bitcointalk thread](https://bitcointalk.org/index.php?topic=181734.0). 
 
-Instead of the standard 1 byte sighash flag, we may use a 4-byte nHashType. One byte determines the inclusion/exclusion of data at the input for the currently executing `scriptSig` (and the output at the same index, if such an output exists). One more byte determines what data from other inputs/outputs should be serialized for the hash to sign. The remaining space determines what global transaction specific fields should be serialized for the hash to sign. In addition, there is a flag for signing a 32 byte value that hash been pushed on the stack. Using these fields, it is completely customizable which transaction data becomes hashed for the signature hash. These should fully enable any seen or unforseen use case of the CTransactionSignatureSerializer.
+Instead of the standard 1-byte sighash flag, we may use a 2-byte nHashType that offers much more flexibility. Seven bits determine the inclusion/exclusion of data at the input for the currently executing `scriptSig` (and the output at the same index, if such an output exists). Five other bits determine what data from other inputs/outputs should be serialized for the hash to sign. Two bits determine what global transaction specific fields should be serialized for the hash to sign. The remaining two bits are unused. Using these fields, it is completely customizable which transaction data becomes hashed for the signature hash. These should fully enable any seen or unforseen use case of the CTransactionSignatureSerializer.
 
 The new SIGHASH flags are below.
 
 ```
-/** Signature hash types/flags */
+/** Signature hash flags */
 enum
 {
     // Input Specific
@@ -34,49 +34,67 @@ enum
     SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY   = 0x0020,
     SIGHASH_WITHOUT_OUTPUT_VALUE          = 0x0040,
     
-    // Reserved for using the above flags at the other (other than self) indices
+    // Reserved for using the above flags at the currently executing index
     //                                      0x0080
     //                                      0x0100
     //                                      0x0200
     //                                      0x0400
     //                                      0x0800
-
-    // Whether to serialize the output at all (always takes priority over SIGHASH_WITHOUT_OUTPUTS)
-    SIGHASH_WITHOUT_OUTPUT_SELF           = 0x4000,
+    //                                      0x1000
+    //                                      0x2000
 
     // Transaction specific fields
-    SIGHASH_WITHOUT_TX_VERSION            = 0x0000,
-    SIGHASH_WITHOUT_TX_LOCKTIME           = 0x0000,
+    SIGHASH_WITHOUT_TX_LOCKTIME           = 0x4000,
+    SIGHASH_WITHOUT_TX_VERSION            = 0x8000,
 };
 ```
 
 Generally, more significant bits are given to flags with higher priority.
 
-Note, to limit the data required to calculate a signature Hash, SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE are assumed true on all other inputs (other than the currently executing).
+Note, to limit the data required to calculate a signature Hash, SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE are assumed true on all other inputs (other than the currently executing). In practice, this means the two least significant bits of the nHashType short are unused. They should be defaulted to 1. To prevent malleability, a script executing this without those bits set to 1 should mark the transaction invalid. 
 
-For example, with this method, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE are currently defined by:
+For example, with these flags, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE, as they exist today, would be the equivalent to:
 
 ```
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
-int nAtOther = 0;
-int SIGHASH_NONE = (nAtIndex << 8) | nAtOther;
+int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
+               SIGHASH_WITHOUT_PREV_VALUE;
+int SIGHASH_ALL = (nAtIndex << 7) | nAtOther;
+
+int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE |
+               SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY |
+               SIGHASH_WITHOUT_OUTPUT_VALUE;
+int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
+               SIGHASH_WITHOUT_PREV_VALUE | 
+               SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY |
+               SIGHASH_WITHOUT_OUTPUT_VALUE;
+int SIGHASH_NONE = (nAtIndex << 7) | nAtOther;
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
-int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_OUTPUT_SELF;
-int SIGHASH_NONE = (nAtIndex << 8) | nAtOther;
-
-int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
-int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_INPUTS;
-int SIGHASH_SINGLE = (nAtIndex << 8) | nAtOther;
+int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
+               SIGHASH_WITHOUT_PREV_VALUE | 
+               SIGHASH_WITHOUT_INPUT_TXID |
+               SIGHASH_WITHOUT_INPUT_INDEX |
+               SIGHASH_WITHOUT_INPUT_SEQUENCE |
+               SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY |
+               SIGHASH_WITHOUT_OUTPUT_VALUE;
+int SIGHASH_SINGLE = (nAtIndex << 7) | nAtOther;
 ```
 
-It is necessary to have SIGHASH_WITHOUT_PREV_VALUE in each `nAtIndex` because currently the prevout's value is not serialized into the transaction. This would change, by default, so that [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
+It is necessary in this example to have SIGHASH_WITHOUT_PREV_VALUE in each `nAtIndex` because currently the prevout's value is not serialized into the transaction. This would change, by default, so that teh equivalent of [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
 
 ```
 // nHashType already defined, want to make it SIGHASH_ANYONECANPAY
-nHashType = nHashType & (~SIGHASH_WITHOUT_INPUT_SELF) | (SIGHASH_WITHOUT_INPUTS);
+int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
+               SIGHASH_WITHOUT_PREV_VALUE | 
+               SIGHASH_WITHOUT_INPUT_TXID |
+               SIGHASH_WITHOUT_INPUT_INDEX |
+               SIGHASH_WITHOUT_INPUT_SEQUENCE
+nHashType = nHashType | nAtOther;
 ```
 -----
+
+These flags give a conceptual representation of what data is to be serialized, but they do not show the order or the method by which the transaction data is serialized.
 
 Very rough draft implementation: 
 
