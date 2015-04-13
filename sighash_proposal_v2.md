@@ -53,13 +53,15 @@ Generally, more significant bits are given to flags with higher priority.
 
 Note, to limit the data required to calculate a signature Hash, SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE are assumed true on all other inputs (other than the currently executing). In practice, this means the two least significant bits of the nHashType short are unused. They should be defaulted to 1. To prevent malleability, a script executing this without those bits set to 1 should mark the transaction invalid. 
 
-For example, with these flags, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE, as they exist today, would be the equivalent to:
+For example, with these flags, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE, as they exist today, would be equivalent to:
 
 ```
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
 int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
                SIGHASH_WITHOUT_PREV_VALUE;
 int SIGHASH_ALL = (nAtIndex << 7) | nAtOther;
+
+/////////////////////////////////////////////
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE |
                SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY |
@@ -69,6 +71,8 @@ int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY |
                SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY |
                SIGHASH_WITHOUT_OUTPUT_VALUE;
 int SIGHASH_NONE = (nAtIndex << 7) | nAtOther;
+
+/////////////////////////////////////////////
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
 int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
@@ -81,7 +85,7 @@ int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY |
 int SIGHASH_SINGLE = (nAtIndex << 7) | nAtOther;
 ```
 
-It is necessary in this example to have SIGHASH_WITHOUT_PREV_VALUE in each `nAtIndex` because currently the prevout's value is not serialized into the transaction. This would change, by default, so that the equivalent of [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
+In this example, it is necessary to have SIGHASH_WITHOUT_PREV_VALUE in each set of input flags (`nAtIndex`) because, currently, the prevout's value is not serialized into the transaction. This would change, by default, so that the equivalent of [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
 
 ```
 // nHashType already defined, want to make it use SIGHASH_ANYONECANPAY
@@ -93,7 +97,7 @@ int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY |
 nHashType = nHashType | nAtOther;
 ```
 
-Specifying the three SIGHASH_WITHOUT_INPUT\* flags simply specifies that those inputs should not be serialized at all, nor counted towards the number of inputs which is included in the serialization.
+Specifying the three SIGHASH_WITHOUT_INPUT_\* flags simply specifies that those inputs should not be serialized at all, nor counted towards the number of inputs which is included in the serialization.
 
 -----
 
