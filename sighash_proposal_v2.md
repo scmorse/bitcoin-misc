@@ -81,10 +81,10 @@ int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY |
 int SIGHASH_SINGLE = (nAtIndex << 7) | nAtOther;
 ```
 
-It is necessary in this example to have SIGHASH_WITHOUT_PREV_VALUE in each `nAtIndex` because currently the prevout's value is not serialized into the transaction. This would change, by default, so that teh equivalent of [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
+It is necessary in this example to have SIGHASH_WITHOUT_PREV_VALUE in each `nAtIndex` because currently the prevout's value is not serialized into the transaction. This would change, by default, so that the equivalent of [SIGHASH_WITHINPUTVALUE](https://bitcointalk.org/index.php?topic=181734.0) is the norm. To make a flag also use SIGHASH_ANYONECANPAY:
 
 ```
-// nHashType already defined, want to make it SIGHASH_ANYONECANPAY
+// nHashType already defined, want to make it use SIGHASH_ANYONECANPAY
 int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | 
                SIGHASH_WITHOUT_PREV_VALUE | 
                SIGHASH_WITHOUT_INPUT_TXID |
@@ -92,9 +92,12 @@ int nAtOther = SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY |
                SIGHASH_WITHOUT_INPUT_SEQUENCE
 nHashType = nHashType | nAtOther;
 ```
+
+Specifying the three SIGHASH_WITHOUT_INPUT\* flags simply specifies that those inputs should not be serialized at all, nor counted towards the number of inputs which is included in the serialization.
+
 -----
 
-These flags give a conceptual representation of what data is to be serialized, but they do not show the order or the method by which the transaction data is serialized.
+These flags give a conceptual representation of what data is to be serialized, but they do not show the order or the method by which the transaction data is serialized. Part of this proposal is using a new order for serialization that makes optimizations for verifying signatures possible. In essence, the data that changes from input to input is serialized at the end of the transaction so that the midstate may be saved and reused at other points in the transaction. This does not prevent CPU exhaustion attacks as described [here](https://bitcointalk.org/?topic=140078), but it optimizes the speed at which transaction signature hashes can be evaluated.
 
 Very rough draft implementation: 
 
@@ -236,17 +239,19 @@ public:
 
 To be soft-fork compatible, obviously these changes need to be done through an alternate method to using the single byte nHashType with OP_CHECKSIG. Two such alternatives are:
 
- - P3SH - Use a `scriptPubKey` similar to P2SH, but with an extra OP_NOP at the beginning. All instances of OP_CHECKSIG within the `redeemScript` can then use the featureful set of SIGHASH flags. There are a few variations on this.
+ - P3SH - There are a few variations on this, but it is mainly a variant of P2SH. My favorite is to use a `scriptPubKey` with the following format:
+
+```
+OP_HASH160 0x14 {data} OP_EQUALVERIFY OP_3
+```
+
  - OP_NEWCHECKSIG - Make another checksig opcode, possibly even using Schnorr signatures instead of standard secp256k1.
 
-Finally, while it may seem unnecessary to use an extra 4 bytes per signature, it should be noted that since this is in the `scriptSig`, it is entirely prunable. 
-
-This may be too complex since we know the use cases that are in mind for the sighash flags. However, there may be unforeseen use cases, and this soft-fork will enable all possible sighash flag configurations, rather than needing to soft fork every time an alternate sighash flag is needed.
-
+This may be too complex since we know the use cases that are in mind for the sighash flags. However, there may be unforeseen use cases, and this soft-fork will enable all possible sighash flag configurations, rather than needing to soft fork every time an alternate sighash flag is needed. In addition, it permits the use of an optimized SignatureHash() function that can avoid re-hashing the same transaction data many many times to verify inputs.
 
 ------
 
-Notes:
+Change log:
 
 I removed the sighash flag for signing a value on the stack because it seemed to be the wrong place for such an operation. Using an OP_NOP to create a modified OP_CHECKDATASIG seemed more appropriate. The current OP_CHECKSIG is really a OP_CHECKTXSIG and shouldn't be used to check sigs for data.
 
