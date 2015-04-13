@@ -63,7 +63,7 @@ For example, with this method, SIGHASH_ALL, SIGHASH_SINGLE, and SIGHASH_NONE are
 ```
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
 int nAtOther = 0;
-int SIGHASH_NONE = (nAtIndex << 8) | nAtOther;
+int SIGHASH_ALL = (nAtIndex << 8) | nAtOther;
 
 int nAtIndex = SIGHASH_WITHOUT_PREV_VALUE;
 int nAtOther = SIGHASH_WITHOUT_OUTPUTS | SIGHASH_WITHOUT_OUTPUT_SELF;
