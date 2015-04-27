@@ -108,84 +108,59 @@ Very rough draft implementation:
 ```
 /**
  * Wrapper that serializes like CTransaction, but with the modifications
- *  required for the signature hash done in-place
+ * required for completely configurable signature hash done in-place.
  */
-class CTransactionSignatureSerializer {
+class CConfigurableTransactionSignatureSerializer : CBaseTransactionSignatureSerializer {
 private:
-    const CTransaction &txTo;  //! reference to the spending transaction (the one being serialized)
-    const CScript &scriptCode; //! output script being consumed
     const CAmount nValue;      //! nValue of ouptut being consumed
     const unsigned int nIn;    //! input index of txTo being signed
     const int nHashType;       //! nHashType determines logic of serialization
 
 public:
-    CTransactionSignatureSerializer(const CTransaction &txToIn, const CScript &scriptCodeIn, CAmount nValueIn, unsigned int nInIn, int nHashTypeIn) :
+    CConfigurableTransactionSignatureSerializer(const CTransaction &txToIn, const CScript &scriptCodeIn, CAmount nValueIn, unsigned int nInIn, int nHashTypeIn) :
         txTo(txToIn), scriptCode(scriptCodeIn), nValue(nValueIn), nIn(nInIn), nHashType(nHashTypeIn) {
-        // When nHashType < 0, signing a value on the stack
-        assert(nHashType >= 0);
-    }
-    
-    int CurrHashType(unsigned int nIndex) {
-        // Assume SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE true for other inputs
-        return (nIndex == nIn) ? (nHashType >> 8) : (nHashType | SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | SIGHASH_WITHOUT_PREV_VALUE);
+        assert((nHashType & SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY) != 0);
+        assert((nHashType & SIGHASH_WITHOUT_PREV_VALUE) != 0);
     }
 
-    /** Serialize the passed scriptCode, skipping OP_CODESEPARATORs */
-    template<typename S>
-    void SerializeScriptCode(S &s, int nType, int nVersion) const {
-        CScript::const_iterator it = scriptCode.begin();
-        CScript::const_iterator itBegin = it;
-        opcodetype opcode;
-        unsigned int nCodeSeparators = 0;
-        while (scriptCode.GetOp(it, opcode)) {
-            if (opcode == OP_CODESEPARATOR)
-                nCodeSeparators++;
-        }
-        ::WriteCompactSize(s, scriptCode.size() - nCodeSeparators);
-        it = itBegin;
-        while (scriptCode.GetOp(it, opcode)) {
-            if (opcode == OP_CODESEPARATOR) {
-                s.write((char*)&itBegin[0], it-itBegin-1);
-                itBegin = it;
-            }
-        }
-        if (itBegin != scriptCode.end())
-            s.write((char*)&itBegin[0], it-itBegin);
+    int PartialHashType(bool fCurrIndex) {
+        // Assume SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE true for other inputs
+        return fCurrIndex ? (nHashType >> 7) : (nHashType | SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | SIGHASH_WITHOUT_PREV_VALUE);
     }
 
     /** Serialize an input of txTo */
     template<typename S>
-    void SerializeInput(S &s, unsigned int nInput, int nType, int nVersion) const {
-        int currHashType = CurrHashType(nInput);
-        
+    void SerializeInput(S &s, unsigned int nInput, bool fCurrIndex, int nType, int nVersion) const {
+        int currHashType = PartialHashType(fCurrIndex);
+
         // Serialize the prevout
         if (!(currHashType & SIGHASH_WITHOUT_INPUT_TXID))
             ::Serialize(s, txTo.vin[nInput].prevout.hash, nType, nVersion);
-        
+
         if (!(currHashType & SIGHASH_WITHOUT_INPUT_INDEX))
             ::Serialize(s, txTo.vin[nInput].prevout.n, nType, nVersion);
-        
+
         if (!(currHashType & SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY))
             SerializeScriptCode(s, nType, nVersion);
         else
             // Blank out other inputs' signatures
             ::Serialize(s, CScript(), nType, nVersion);
-            
+
         if (!(currHashType & SIGHASH_WITHOUT_PREV_VALUE))
             ::Serialize(s, nValue, nType, nVersion);
-            
+
         if (!(currHashType & SIGHASH_WITHOUT_INPUT_SEQUENCE))
             ::Serialize(s, txTo.vin[nInput].nSequence, nType, nVersion);
     }
 
     /** Serialize an output of txTo */
     template<typename S>
-    void SerializeOutput(S &s, unsigned int nOutput, int nType, int nVersion) const {
-        int currHashType = CurrHashType(nOutput);
-        
+    void SerializeOutput(S &s, unsigned int nOutput, bool fCurrIndex, int nType, int nVersion) const {
+        int currHashType = PartialHashType(fCurrIndex);
+
         if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_VALUE))
             ::Serialize(s, txTo.vout[nOutput].nValue, nType, nVersion);
-        
+
         if (!(currHashType & SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY))
             ::Serialize(s, txTo.vout[nOutput].scriptPubKey, nType, nVersion);
         else
@@ -195,46 +170,62 @@ public:
     /** Serialize txTo */
     template<typename S>
     void Serialize(S &s, int nType, int nVersion) const {
-        
+        // From most significant flags to least significant
+
+        int nAtIndex = PartialHashType(nIn);
+        int nAtOther = PartialHashType(nIn+1);
+
         // Serialize nVersion
         if (!(nHashType & SIGHASH_WITHOUT_TX_VERSION))
             ::Serialize(s, txTo.nVersion, nType, nVersion);
-        
-        // Serialize vin
-        unsigned int nInputs = (nHashType & SIGHASH_WITHOUT_INPUTS) ? 0 : txTo.vin.size()-1;
-        if (!(nHashType & SIGHASH_WITHOUT_INPUT_SELF) && nIn < txTo.vin.size())
-            nInputs += 1;
-        ::WriteCompactSize(s, nInputs);
-        
-        for (unsigned int nInput = 0; nInput < txTo.vin.size(); nInput++) {
-            if (nInput == nIn) {
-                if (!(nHashType & SIGHASH_WITHOUT_INPUT_SELF))
-                    SerializeInput(s, nInput, nType, nVersion);
-            } else {
-                if (!(nHashType & SIGHASH_WITHOUT_INPUTS))
-                    SerializeInput(s, nInput, nType, nVersion);
-            }
-        }
-        
-        // Serialize vout
-        unsigned int nOutputs = (nHashType & SIGHASH_WITHOUT_OUTPUTS) ? 0 : txTo.vout.size()-1;
-        if (!(nHashType & SIGHASH_WITHOUT_OUTPUT_SELF) && nIn < txTo.vout.size())
-            nOutputs += 1;
-        ::WriteCompactSize(s, nOutputs);
-        
-        for (unsigned int nOutput = 0; nOutput < txTo.vout.size(); nOutput++) {
-            if (nOutput == nIn) {
-                if (!(nHashType & SIGHASH_WITHOUT_OUTPUT_SELF))
-                    SerializeOutput(s, nOutput, nType, nVersion);
-            } else {
-                if (!(nHashType & SIGHASH_WITHOUT_OUTPUTS))
-                    SerializeOutput(s, nOutput, nType, nVersion);
-            }
-        }
-        
-        // Serialize nLockTime
+
+        // Serialize nLockTime - TODO maybe this should actually go near end?
         if (!(nHashType & SIGHASH_WITHOUT_TX_LOCKTIME))
             ::Serialize(s, txTo.nLockTime, nType, nVersion);
+
+        // Serialize 'other' outputs
+        unsigned int nOutputs = ((nAtOther & SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY) == 0) ||
+                                ((nAtOther & SIGHASH_WITHOUT_OUTPUT_VALUE)        == 0) ? txTo.vout.size() : 0;
+        ::WriteCompactSize(s, nOutputs);
+
+        for (unsigned int nOutput = 0; nOutput < nOutputs; nOutput++) {
+            SerializeOutput(s, nOutput, false, nType, nVersion);
+        }
+
+        // Serialize 'other' inputs
+        unsigned int nInputs = ((nAtOther & SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY) == 0) ||
+                               ((nAtOther & SIGHASH_WITHOUT_PREV_VALUE)        == 0) ||
+                               ((nAtOther & SIGHASH_WITHOUT_INPUT_TXID)        == 0) ||
+                               ((nAtOther & SIGHASH_WITHOUT_INPUT_INDEX)       == 0) ||
+                               ((nAtOther & SIGHASH_WITHOUT_INPUT_SEQUENCE)    == 0) ? txTo.vin.size() : 0;
+        ::WriteCompactSize(s, nInputs);
+
+        for (unsigned int nInput = 0; nInput < nInputs; nInput++) {
+            SerializeInput(s, nInput, false, nType, nVersion);
+        }
+
+        // TODO take snapshot for common sighash types at this point
+
+        // Serialize 'this' output, if the output exists and the sighash type doesn't completely remove it
+        bool fSerializeOutput = nIn < txTo.vout.size() && 
+                                (((nAtIndex & SIGHASH_WITHOUT_OUTPUT_SCRIPTPUBKEY) == 0) ||
+                                 ((nAtIndex & SIGHASH_WITHOUT_OUTPUT_VALUE)        == 0));
+        if (fSerializeOutput) {
+            ::WriteCompactSize(s, 1);
+            SerializeOutput(s, nIn, true, nType, nVersion);
+        }
+
+        // Serialize 'this' input, if the sighash type doesn't completely remove it
+        bool fSerializeInput = ((nAtIndex & SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY) == 0) ||
+                               ((nAtIndex & SIGHASH_WITHOUT_PREV_VALUE)        == 0) ||
+                               ((nAtIndex & SIGHASH_WITHOUT_INPUT_TXID)        == 0) ||
+                               ((nAtIndex & SIGHASH_WITHOUT_INPUT_INDEX)       == 0) ||
+                               ((nAtIndex & SIGHASH_WITHOUT_INPUT_SEQUENCE)    == 0);
+        if (fSerializeInput) {
+            ::WriteCompactSize(s, 1);
+            SerializeOutput(s, nIn, true, nType, nVersion);
+        }
+        
     }
 };
 ```
