@@ -125,7 +125,7 @@ public:
 
     int PartialHashType(bool fCurrIndex) {
         // Assume SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY and SIGHASH_WITHOUT_PREV_VALUE true for other inputs
-        return fCurrIndex ? (nHashType >> 7) : (nHashType | SIGHASH_WITHOUT_PREV_SCRIPTPUBKEY | SIGHASH_WITHOUT_PREV_VALUE);
+        return fCurrIndex ? (nHashType >> 7) : (nHashType);
     }
 
     /** Serialize an input of txTo */
