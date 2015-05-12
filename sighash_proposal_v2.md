@@ -246,6 +246,12 @@ This may be too complex since we know the use cases that are in mind for the sig
 
 ------
 
+This would enable the Lightning network to securely create a refund transaction before funding the micropayment channel by signing inputs using the SIGHASH_WITHOUT_INPUT_TXID flag. A potential drawback of signing with method is that if any coins are sent to the same scriptPubKey again (in the exact same amount), then they may be forwarded via a replay attack. However, they may only be sent to the same place that they had been sent before. (side note, you could set up an auto-forwarding script without a private key by signing with specialized flags once)
+
+The way around this is to just use caution when creating a micropayment channel. Use newly generated addresses that are designated for funding the channel specifically, and do not use them for any other purpose. r
+
+------
+
 Change log:
 
 I removed the sighash flag for signing a value on the stack because it seemed to be the wrong place for such an operation. Using an OP_NOP to create a modified OP_CHECKDATASIG seemed more appropriate. The current OP_CHECKSIG is really a OP_CHECKTXSIG and shouldn't be used to check sigs for data.
